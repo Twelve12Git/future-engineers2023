@@ -1,5 +1,5 @@
-import sensor, time
-from pyb import Pin, Timer, Servo, I2C
+import sensor, time, pyb
+from pyb import Pin, Timer, Servo, LED
 
 def constrain(value, min_, max_):
 	if min_ <= value and value <= max_: return value
@@ -66,7 +66,10 @@ servo = Servo(2)
 
 main_pid = PID(0.3, 0, 0)
 
+
 clock = time.clock()
+
+led = LED(2)
 
 sensor.reset()
 sensor.set_pixformat(sensor.RGB565)
@@ -83,49 +86,67 @@ GLOBAL_HIGHT = 60
 
 RED = (0, 100, 35, 127, -128, 127)
 GREEN = (0, 100, -128, -12, -128, 127)
-BLACK = (0, 20, -128, 127, -128, 127)
+BLACK = (0, 46, -128, 127, -128, 19)
 ORANGE = (51, 70, 5, 37, 11, 127)
 
 WIDTH = 80
 HIGHT = 40
 
 ROI_FIELD = (0, 25, GLOBAL_WIDTH-0, GLOBAL_HIGHT-25) # x, y, dx, dy
+AREA_WALL_FRONT = (35 ,0,WIDTH-35*2 , HIGHT)
 AREA_WALL_LEFT = (0, 0, 10, HIGHT)
 AREA_WALL_RIGHT = (WIDTH-10, 0, 10, HIGHT)
 AREA_CUBES = (0, 0, WIDTH, HIGHT)
+
 
 def atr(roi): # area to roi
 	field = ROI_FIELD
 	return (field[0]+roi[0], field[1]+roi[1], roi[2], roi[3])
 
-def deb_obj(img, prnt=True, **blobs):
+def deb_blobs(img, prnt=True, **blobs):
 
 	for key, value in blobs.items():
-		if value:
-			if prnt: print(f"{key}: {[x.cx() for x in value]}; ", end=" ")
+		if value and len(value) and None not in value:
+			if prnt: print(f"{key}: {*[(x.cx(), x.pixels()) for x in value]}; ", end="\t")
 			[img.draw_rectangle(x.rect(), (255, 255, 255)) for x in value]
-		if prnt: print("")
+	if prnt: print("")
 
-def deb(img, prnt=True, **kwargs):
-	if prnt:
-		if kwargs:
-			for key, value in kwargs.items():
-				print(f"{key}: {value};  ", end="")
-			print("")
-	img.draw_rectangle(ROI_FIELD, (255, 0, 0)) # поле
-	img.draw_rectangle(atr(AREA_WALL_LEFT), (0, 255, 0)) # зона поиска левой стены
-	img.draw_rectangle(atr(AREA_WALL_RIGHT), (0, 255, 0)) # зона поиска правой стены
+def deb(img, **kwargs):
+	if kwargs:
+		for key, value in kwargs.items():
+			print(f"{key}: {value};  ", end="")
+		print("")
+
+def deb_roi():
+	#img.draw_rectangle(ROI_FIELD, (255, 0, 0)) # поле
+	img.draw_rectangle(atr(AREA_WALL_FRONT), (255, 255, 0)) # зона поиска передней стены
+	img.draw_rectangle(atr(AREA_WALL_LEFT), (255, 200, 0)) # зона поиска левой стены
+	img.draw_rectangle(atr(AREA_WALL_RIGHT), (200, 255, 0)) # зона поиска правой стены
 	img.draw_rectangle(atr(AREA_CUBES), (0, 0, 255)) # зона поиска кубиков
 
 
-driver.set_motor(50)
-mid_offset = -10 # -70 - 70
+
+driver.set_motor(40)
+
+mid_offset = 60
+offsets = [mid_offset+80, mid_offset, mid_offset-80]
+offset = 1
+prev_cur_cube = None
+
+cur_millis = 0
+force_go_timer = 0
+
+led.off()
+
 while True:
 	clock.tick()
-	img = sensor.snapshot()
+	#img = sensor.snapshot()
+	img = sensor.snapshot().lens_corr(strength = 1.4, zoom = 1.0)
+	cur_millis = pyb.millis()
 
 	walls_left = img.find_blobs([BLACK], roi=atr(AREA_WALL_LEFT), pixels_threshold=30, area_threshold=30)
 	walls_right = img.find_blobs([BLACK], roi=atr(AREA_WALL_RIGHT), pixels_threshold=30, area_threshold=30)
+	walls_front = img.find_blobs([BLACK], roi=atr(AREA_WALL_FRONT), pixels_threshold=40, area_threshold=30)
 
 	red_cubes = img.find_blobs([RED], roi=atr(AREA_CUBES), pixels_threshold=30, area_threshold=30)
 	green_cubes = img.find_blobs([GREEN], roi=atr(AREA_CUBES), pixels_threshold=30, area_threshold=30)
@@ -134,13 +155,33 @@ while True:
 	green_area = 0 if len(green_cubes) < 1 else green_cubes[0].pixels()
 	left_area = 0 if len(walls_left) < 1 else walls_left[0].pixels()
 	right_area = 0 if len(walls_right) < 1 else walls_right[0].pixels()
+	front_area = 0 if len(walls_front) < 1 else walls_front[0].pixels()
 
-	#red_err = int((WIDTH-(WIDTH/2+30))*(red_area*0.12))
-	red_err = int((WIDTH//2-(red_cubes[0].cx())-30)*(red_area*0.02)) if red_cubes else 0
-	err = mid_offset + red_err - (left_area-right_area)
+	#		ищем ближайший куб
+	# 1. смотрим какой куб ближайший
+	# 2. смотрим с какой он стороны
+	# 3. cмотрим цвет этого куба
 
-	servo.angle(constrain(int(main_pid(err)), -40, 40) )
-	deb(img, err=err, red_err=red_err, u=main_pid.u)
-	deb_obj(img, False, red=red_cubes)
+	cur_cube = (red_cubes[0] if red_cubes else None) if red_area >= green_area else (green_cubes[0] if green_cubes else None)
 
+	if cur_cube:
+		if red_area > green_area:
+			offset = 2
+		else:
+			offset = 0
+	else:
+		offset = 1
+
+	#if cur_cube is None and prev_cur_cube is not None:
+		#force_go_timer = cur_millis + 1000
+	#prev_cur_cube = cur_cube
+
+	err = offsets[offset] - (left_area + front_area)
+	u = main_pid(err)
+
+	servo.angle(constrain(int(u), -40, 40))
+
+	deb_roi()
+	deb(img, err=err, u=u, la=left_area, wa=front_area, off=offset)
+	deb_blobs(img, False, current_cube = [cur_cube], lw=walls_left, fw=walls_front)
 
