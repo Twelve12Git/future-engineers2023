@@ -80,6 +80,7 @@ def deb_roi():
 	img.draw_rectangle(atr(AREA_WALL_LEFT), (255, 200, 0)) # зона поиска левой стены
 	img.draw_rectangle(atr(AREA_WALL_RIGHT), (200, 255, 0)) # зона поиска правой стены
 	img.draw_rectangle(atr(AREA_CUBES), (0, 0, 255)) # зона поиска кубиков
+	img.draw_rectangle(atr(AREA_TURNS), (255, 0, 255))
 	#img.draw_rectangle(atr(AREA_RED_CUBES), (255, 0, 0)) # зона поиска кубиков
 	#img.draw_rectangle(atr(AREA_GREEN_CUBES), (0, 255, 0)) # зона поиска кубиков
 
@@ -119,13 +120,15 @@ AREA_WALL_FRONT = (35 ,0,WIDTH-35*2 , HIGHT)
 AREA_WALL_LEFT = (0, 0, 10, HIGHT)
 AREA_WALL_RIGHT = (WIDTH-10, 0, 10, HIGHT)
 AREA_CUBES = (0, 0, WIDTH, int(HIGHT*0.35))
+AREA_TURNS = (20, int(HIGHT*0.6), WIDTH-20*2, HIGHT-int(HIGHT*0.6))
 AREA_RED_CUBES = (0, 0, int(WIDTH*0.8), int(HIGHT*0.35))
 AREA_GREEN_CUBES = (WIDTH-int(WIDTH*0.8), 0, int(WIDTH*0.8), int(HIGHT*0.35))
 
 RED = (0, 76, 17, 127, -37, 127)
 GREEN = (0, 100, -128, -25, -128, 127)
 BLACK = (0, 46, -128, 127, -128, 19)
-ORANGE = (51, 70, 5, 37, 11, 127)
+ORANGE = (0, 100, 11, 51, -128, 127)
+BLUE = (0, 100, -128, 127, -16, 127)
 
 ############ SPEED ############
 driver.set_motor(40)
@@ -138,6 +141,8 @@ prev_cur_cube = None
 
 cur_millis = 0
 force_go_timer = 0
+orange_turn_deadtime = blue_turn_deadtime = 0
+blue_turns = orange_turns = turns = 0
 
 while True:
 	clock.tick()
@@ -150,6 +155,8 @@ while True:
 	walls_front = img.find_blobs([BLACK], roi=atr(AREA_WALL_FRONT), pixels_threshold=50)
 	red_cubes = img.find_blobs([RED], roi=atr(AREA_CUBES), pixels_threshold=20)
 	green_cubes = img.find_blobs([GREEN], roi=atr(AREA_CUBES), pixels_threshold=20)
+	turn_orange = img.find_blobs([ORANGE], roi=atr(AREA_TURNS), pixels_threshold=20)
+	turn_blue = img.find_blobs([BLUE], roi=atr(AREA_TURNS), pixels_threshold=20)
 	# считаем полщади, проверяем что не 0
 	red_area   = red_cubes[0].pixels()   if len(red_cubes)   else 0
 	green_area = green_cubes[0].pixels() if len(green_cubes) else 0
@@ -162,6 +169,16 @@ while True:
 	if cur_cube is None and prev_cur_cube is not None: # если потеряли кубик из вида
 		force_go_timer = cur_millis + 1000
 	prev_cur_cube = cur_cube
+
+	if len(turn_orange) and orange_turn_deadtime < cur_millis:
+		orange_turns += 1
+		orange_turn_deadtime = cur_millis + 1000
+		if orange_turns == blue_turns: turns += 1
+	if len(turn_blue) and blue_turn_deadtime < cur_millis:
+		blue_turns += 1
+		blue_turn_deadtime = cur_millis + 1000
+		if orange_turns == blue_turns: turns += 1
+
 
 	if not force_go_timer > cur_millis: # если только что проехали кубик, помним что за кубик это был
 		if cur_cube:
@@ -191,13 +208,17 @@ while True:
 
 	else:
 		err = 0
-		print("-_-_-_-_-_-ERROR-_-_-_-_-_-")
+		#print("-_-_-_-_-_-ERROR-_-_-_-_-_-")
 
 	u = main_pid(err)
 	servo.angle(constrain(int(u), -45, 45))
 
+	#if turns >= 2:
+		#driver.set_motor(0)
+		#break;
 	deb_roi()
-	deb(img, err=err, la=left_area, fa=front_area, timer="IN" if force_go_timer > cur_millis else "OUT")
-	deb_blobs(img, False, current_cube = [cur_cube], lw=walls_left, fw=walls_front)
-	#deb_blobs(img, red=red_cubes, green=green_cubes)
+	#deb(img, err=err, la=left_area, fa=front_area, timer="IN" if force_go_timer > cur_millis else "OUT")
+	deb(img, blue=blue_turns, orng=orange_turns, al=turns)
+	#deb_blobs(img, False, current_cube = [cur_cube], lw=walls_left, fw=walls_front)
+	#deb_blobs(img,True, bl=turn_blue, orn=turn_orange)
 
