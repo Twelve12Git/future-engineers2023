@@ -91,7 +91,7 @@ driver = Driver(
 )
 servo = Servo(2)
 
-main_pid = PID(0.6, 0, 0)
+main_pid = PID(0.3, 0, 0)
 
 
 clock = time.clock()
@@ -127,22 +127,22 @@ AREA_GREEN_CUBES = (WIDTH-int(WIDTH*0.8), 0, int(WIDTH*0.8), int(HIGHT*0.35))
 RED = (0, 76, 17, 127, -37, 127)
 GREEN = (0, 100, -128, -25, -128, 127)
 BLACK = (0, 46, -128, 127, -128, 19)
-ORANGE = (0, 100, 11, 51, -128, 127)
-BLUE = (0, 100, -128, 127, -16, 127)
+ORANGE = (0, 100, -128, 127, 13, 95)
+BLUE = (0, 100, -128, 127, -67, -17)
 
 ############ SPEED ############
 driver.set_motor(40)
 ###############################
 
-mid_offset = 60
-offsets = [mid_offset+80, mid_offset, mid_offset-40]
-offset = 1
+left_offset = 85
+right_offset = 85
 prev_cur_cube = None
 
 cur_millis = 0
 force_go_timer = 0
 orange_turn_deadtime = blue_turn_deadtime = 0
 blue_turns = orange_turns = turns = 0
+clockwise = True ## usingg left area by default
 
 while True:
 	clock.tick()
@@ -152,73 +152,38 @@ while True:
 	# ищем блобы
 	walls_left = img.find_blobs([BLACK], roi=atr(AREA_WALL_LEFT), pixels_threshold=30)
 	walls_right = img.find_blobs([BLACK], roi=atr(AREA_WALL_RIGHT), pixels_threshold=30)
-	walls_front = img.find_blobs([BLACK], roi=atr(AREA_WALL_FRONT), pixels_threshold=50)
-	red_cubes = img.find_blobs([RED], roi=atr(AREA_CUBES), pixels_threshold=20)
-	green_cubes = img.find_blobs([GREEN], roi=atr(AREA_CUBES), pixels_threshold=20)
+	walls_front = img.find_blobs([BLACK], roi=atr(AREA_WALL_FRONT), pixels_threshold=65)
 	turn_orange = img.find_blobs([ORANGE], roi=atr(AREA_TURNS), pixels_threshold=20)
 	turn_blue = img.find_blobs([BLUE], roi=atr(AREA_TURNS), pixels_threshold=20)
 	# считаем полщади, проверяем что не 0
-	red_area   = red_cubes[0].pixels()   if len(red_cubes)   else 0
-	green_area = green_cubes[0].pixels() if len(green_cubes) else 0
 	left_area  = walls_left[0].pixels()  if len(walls_left)  else 0
 	right_area = walls_right[0].pixels() if len(walls_right) else 0
 	front_area = walls_front[0].pixels() if len(walls_front) else 0
-	# текущий куб (зеленый или расный блоб, в зависимости от площади)
-	cur_cube = (red_cubes[0] if red_cubes else None) if red_area >= green_area else (green_cubes[0] if green_cubes else None)
-
-	if cur_cube is None and prev_cur_cube is not None: # если потеряли кубик из вида
-		force_go_timer = cur_millis + 1000
-	prev_cur_cube = cur_cube
 
 	if len(turn_orange) and orange_turn_deadtime < cur_millis:
 		orange_turns += 1
 		orange_turn_deadtime = cur_millis + 1000
-		if orange_turns == blue_turns: turns += 1
 	if len(turn_blue) and blue_turn_deadtime < cur_millis:
 		blue_turns += 1
 		blue_turn_deadtime = cur_millis + 1000
-		if orange_turns == blue_turns: turns += 1
+	if orange_turns < blue_turns: clockwise = False
+	if orange_turns == blue_turns: turns = orange_turns
 
-
-	if not force_go_timer > cur_millis: # если только что проехали кубик, помним что за кубик это был
-		if cur_cube:
-			if red_area > green_area:
-				offset = 2
-				ledr.toggle()
-				ledg.off()
-			else:
-				offset = 0
-				ledg.toggle()
-				ledr.off()
-		else:
-			offset = 1
-			ledg.off()
-			ledr.off()
-
-
-	err = None
-	if cur_cube and not left_area:
-		err = 0 # кубик загородил стенку, по которой едем
-	elif left_area and not front_area:
-		# если нет стенки впереди (прямо)
-		err = offsets[offset] - (left_area)
-	elif left_area and front_area and front_area < left_area:
-		# повотрот
-		err = offsets[offset] - (left_area + front_area)
-
+	if clockwise:
+		err = left_offset - (left_area + int(front_area*0.5))
 	else:
-		err = 0
-		#print("-_-_-_-_-_-ERROR-_-_-_-_-_-")
+		err = right_area * int(front_area*0.5) - right_offset
 
 	u = main_pid(err)
 	servo.angle(constrain(int(u), -45, 45))
 
-	#if turns >= 2:
-		#driver.set_motor(0)
-		#break;
+	if turns >= 3:
+		driver.set_motor(0)
+		break;
+
+
 	deb_roi()
-	#deb(img, err=err, la=left_area, fa=front_area, timer="IN" if force_go_timer > cur_millis else "OUT")
-	deb(img, blue=blue_turns, orng=orange_turns, al=turns)
-	#deb_blobs(img, False, current_cube = [cur_cube], lw=walls_left, fw=walls_front)
-	#deb_blobs(img,True, bl=turn_blue, orn=turn_orange)
+	deb(img, la=left_area, ra=right_area, fa=front_area, err=err, clockwise=clockwise, turns=turns)
+	#deb(img, blue=blue_turns, orng=orange_turns, al=turns)
+	deb_blobs(img,False, bl=turn_blue, orn=turn_orange, lw=walls_left, rw=walls_right, fw=walls_front)
 
