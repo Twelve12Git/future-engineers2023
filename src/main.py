@@ -130,12 +130,8 @@ BLACK = (0, 46, -128, 127, -128, 19)
 ORANGE = (0, 100, -128, 127, 13, 95)
 BLUE = (0, 100, -128, 127, -67, -17)
 
-############ SPEED ############
-driver.set_motor(40)
-###############################
-
 left_offset = 85
-right_offset = 85
+right_offset = 105
 prev_cur_cube = None
 
 cur_millis = 0
@@ -144,7 +140,22 @@ orange_turn_deadtime = blue_turn_deadtime = 0
 blue_turns = orange_turns = turns = 0
 clockwise = True ## usingg left area by default
 
-while True:
+button = Pin("P6", Pin.IN)
+
+while button.value():
+	img = sensor.snapshot()
+	driver.set_motor(0)
+	servo.angle(0)
+
+pyb.delay(800)
+
+cur_millis = pyb.millis()
+finish_timer = cur_millis + 3500
+############ SPEED ############
+driver.set_motor(40)
+###############################
+
+while cur_millis < finish_timer:
 	clock.tick()
 	img = sensor.snapshot().lens_corr(strength = 1.8, zoom = 1.0)
 
@@ -172,14 +183,15 @@ while True:
 	if clockwise:
 		err = left_offset - (left_area + int(front_area*0.5))
 	else:
-		err = right_area * int(front_area*0.5) - right_offset
+		err = right_area + int(front_area*0.5) - right_offset
 
 	u = main_pid(err)
 	servo.angle(constrain(int(u), -45, 45))
 
-	if turns >= 3:
-		driver.set_motor(0)
-		break;
+	if turns < 2:
+		finish_timer = cur_millis + 3500
+	else:
+		pass
 
 
 	deb_roi()
