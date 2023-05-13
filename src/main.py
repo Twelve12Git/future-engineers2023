@@ -51,7 +51,7 @@ class PID:
 		self._prev_err = err
 		return self.u
 
-	def reset():
+	def reset(self):
 		self.u = 0
 		self._prev_err = 0
 		self._err_sum = 0
@@ -80,7 +80,7 @@ def deb_roi():
 	img.draw_rectangle(atr(AREA_WALL_LEFT), (255, 200, 0)) # зона поиска левой стены
 	img.draw_rectangle(atr(AREA_WALL_RIGHT), (200, 255, 0)) # зона поиска правой стены
 	img.draw_rectangle(atr(AREA_CUBES), (0, 0, 255)) # зона поиска кубиков
-	img.draw_rectangle(atr(AREA_TURNS), (255, 0, 255))
+	#img.draw_rectangle(atr(AREA_TURNS), (255, 0, 255))
 	#img.draw_rectangle(atr(AREA_RED_CUBES), (255, 0, 0)) # зона поиска кубиков
 	#img.draw_rectangle(atr(AREA_GREEN_CUBES), (0, 255, 0)) # зона поиска кубиков
 
@@ -91,7 +91,7 @@ driver = Driver(
 )
 servo = Servo(2)
 
-main_pid = PID(0.6, 0, 0)
+main_pid = PID(0.7, 0, 0)
 
 
 clock = time.clock()
@@ -117,15 +117,15 @@ HIGHT = 40
 
 ROI_FIELD = (0, 25, GLOBAL_WIDTH-0, GLOBAL_HIGHT-25) # x, y, dx, dy
 AREA_WALL_FRONT = (35 ,0,WIDTH-35*2 , HIGHT)
-AREA_WALL_LEFT = (0, 0, 10, HIGHT)
-AREA_WALL_RIGHT = (WIDTH-10, 0, 10, HIGHT)
+AREA_WALL_LEFT = (0, 2, 10, HIGHT-2)
+AREA_WALL_RIGHT = (WIDTH-10, 2, 10, HIGHT-2)
 AREA_CUBES = (0, 0, WIDTH, int(HIGHT*0.35))
 AREA_TURNS = (20, int(HIGHT*0.6), WIDTH-20*2, HIGHT-int(HIGHT*0.6))
 AREA_RED_CUBES = (0, 0, int(WIDTH*0.8), int(HIGHT*0.35))
 AREA_GREEN_CUBES = (WIDTH-int(WIDTH*0.8), 0, int(WIDTH*0.8), int(HIGHT*0.35))
 
-RED = (0, 76, 17, 127, -37, 127)
-GREEN = (0, 100, -128, -25, -128, 127)
+RED = (0, 100, 58, 127, 13, 95)
+GREEN = (0, 100, -128, -22, 28, 127)
 BLACK = (0, 46, -128, 127, -128, 19)
 ORANGE = (0, 100, -128, 127, 13, 95)
 BLUE = (0, 100, -128, 127, -67, -17)
@@ -135,26 +135,29 @@ driver.set_motor(40)
 ###############################
 
 mid_offset = 60
-offsets = [mid_offset+80, mid_offset, mid_offset-40]
-offset = 1
+offsets = [130, mid_offset, 20]
+offset = 0
 prev_cur_cube = None
 
 clockwise = True
 
 cur_millis = 0
 force_go_timer = 0
+in_timer_area_mul = 1
+finish_timer = 1500
 orange_turn_deadtime = blue_turn_deadtime = 0
 blue_turns = orange_turns = turns = 0
 
-while True:
+while finish_timer >= cur_millis:
 	clock.tick()
-	img = sensor.snapshot().lens_corr(strength = 1.8, zoom = 1.0)
+	img = sensor.snapshot()
+	#img = sensor.snapshot().elens_corr(strength = 1.8, zoom = 1.0)
 
 	cur_millis = pyb.millis()
 	# ищем блобы
-	walls_left = img.find_blobs([BLACK], roi=atr(AREA_WALL_LEFT), pixels_threshold=30)
-	walls_right = img.find_blobs([BLACK], roi=atr(AREA_WALL_RIGHT), pixels_threshold=30)
-	walls_front = img.find_blobs([BLACK], roi=atr(AREA_WALL_FRONT), pixels_threshold=50)
+	walls_left = img.find_blobs([BLACK], roi=atr(AREA_WALL_LEFT), pixels_threshold=10)
+	walls_right = img.find_blobs([BLACK], roi=atr(AREA_WALL_RIGHT), pixels_threshold=10)
+	walls_front = img.find_blobs([BLACK], roi=atr(AREA_WALL_FRONT), pixels_threshold=40)
 	red_cubes = img.find_blobs([RED], roi=atr(AREA_CUBES), pixels_threshold=20)
 	green_cubes = img.find_blobs([GREEN], roi=atr(AREA_CUBES), pixels_threshold=20)
 	turn_orange = img.find_blobs([ORANGE], roi=atr(AREA_TURNS), pixels_threshold=20)
@@ -165,24 +168,26 @@ while True:
 	left_area  = walls_left[0].pixels()  if len(walls_left)  else 0
 	right_area = walls_right[0].pixels() if len(walls_right) else 0
 	front_area = walls_front[0].pixels() if len(walls_front) else 0
-	# текущий куб (зеленый или расный блоб, в зависимости от площади)
+	# текущий куб (зеленый или красный блоб, в зависимости от площади или None)
 	cur_cube = (red_cubes[0] if red_cubes else None) if red_area >= green_area else (green_cubes[0] if green_cubes else None)
-
-	if cur_cube is None and prev_cur_cube is not None: # если потеряли кубик из вида
-		force_go_timer = cur_millis + 1000
+	# если потеряли кубик из вида заупскаем таймер
+	if cur_cube is None and prev_cur_cube is not None:
+		force_go_timer = cur_millis + 300
 	prev_cur_cube = cur_cube
-
+	# считаем повороты
 	if len(turn_orange) and orange_turn_deadtime < cur_millis:
 		orange_turns += 1
 		orange_turn_deadtime = cur_millis + 1000
 	if len(turn_blue) and blue_turn_deadtime < cur_millis:
 		blue_turns += 1
 		blue_turn_deadtime = cur_millis + 1000
-	if orange_turns < blue_turns: clockwise = False
 	if orange_turns == blue_turns: turns = orange_turns
-
-
-	if not force_go_timer > cur_millis: # если только что проехали кубик, помним что за кубик это был
+	# если пересекаем сначала оранжевую линию, то мы едем против часовой стрелика, по дефолту по часовой
+	if orange_turns < blue_turns:
+		if clockwise: main_pid.reset()
+		clockwise = False
+	# определяем позицию робота относитеьно центра в зависимости от кубика
+	if not force_go_timer > cur_millis: # если только что потеряли из виду кубик, то еще секунду не меняем сдвиг относительно центра
 		if cur_cube:
 			if red_area > green_area:
 				offset = 2
@@ -197,29 +202,29 @@ while True:
 			ledg.off()
 			ledr.off()
 
+	# считаем ошибку
+	#offset = 2
+	cur_area     = left_area if     clockwise else right_area
+	enother_area = left_area if not clockwise else right_area
 
-	err = None
-	if cur_cube and not left_area:
+	err = offsets[offset] - (cur_area + (int(front_area) if blue_turns != orange_turns else 0))# * 1 if clockwise else -1
+	if cur_cube and not cur_area:
 		err = 0 # кубик загородил стенку, по которой едем
-	elif left_area and not front_area:
-		# если нет стенки впереди (прямо)
-		err = offsets[offset] - (left_area)
-	elif left_area and front_area and front_area < left_area:
-		# повотрот
-		err = offsets[offset] - (left_area + front_area)
-	else:
-		err = 0
-		#print("-_-_-_-_-_-ERROR: NO WALLS-_-_-_-_-_-")
+
 
 	u = main_pid(err)
 	servo.angle(constrain(int(u), -45, 45))
 
-	#if turns >= 2:
-		#driver.set_motor(0)
-		#break;
+	if turns >= 4*1:
+		pass
+	else:
+		finish_timer = cur_millis + 1500
+
 	deb_roi()
-	#deb(img, err=err, la=left_area, fa=front_area, timer="IN" if force_go_timer > cur_millis else "OUT")
-	deb(img, blue=blue_turns, orng=orange_turns, al=turns)
-	#deb_blobs(img, False, current_cube = [cur_cube], lw=walls_left, fw=walls_front)
+	deb(img, err=err, ca=cur_area, fa=front_area, timer="IN" if force_go_timer > cur_millis else "OUT", offset=offset, u=u, clws=clockwise)
+	deb_blobs(img, False, current_cube = [cur_cube], lw=walls_left, rw=walls_right, fw=walls_front)
+	#deb(img, blue=blue_turns, orng=orange_turns, al=turns)
 	#deb_blobs(img,True, bl=turn_blue, orn=turn_orange)
 
+servo.angle(0)
+driver.set_motor(0)
