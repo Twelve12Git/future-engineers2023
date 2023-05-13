@@ -92,6 +92,7 @@ driver = Driver(
 servo = Servo(2)
 
 main_pid = PID(0.7, 0, 0)
+button = Pin("P6", Pin.IN)
 
 
 clock = time.clock()
@@ -130,10 +131,6 @@ BLACK = (0, 46, -128, 127, -128, 19)
 ORANGE = (0, 100, -128, 127, 13, 95)
 BLUE = (0, 100, -128, 127, -67, -17)
 
-############ SPEED ############
-driver.set_motor(40)
-###############################
-
 mid_offset = 60
 offsets = [130, mid_offset, 20]
 offset = 0
@@ -147,6 +144,15 @@ in_timer_area_mul = 1
 finish_timer = 1500
 orange_turn_deadtime = blue_turn_deadtime = 0
 blue_turns = orange_turns = turns = 0
+
+while not button.value():
+	img = sensor.snapshot()
+	driver.set_motor(0)
+	servo.angle(0)
+
+############ SPEED ############
+driver.set_motor(40)
+###############################
 
 while finish_timer >= cur_millis:
 	clock.tick()
