@@ -127,8 +127,8 @@ AREA_GREEN_CUBES = (WIDTH-int(WIDTH*0.8), 0, int(WIDTH*0.8), int(HIGHT*0.35))
 RED = (0, 76, 17, 127, -37, 127)
 GREEN = (0, 100, -128, -25, -128, 127)
 BLACK = (0, 46, -128, 127, -128, 19)
-ORANGE = (0, 100, 11, 51, -128, 127)
-BLUE = (0, 100, -128, 127, -16, 127)
+ORANGE = (0, 100, -128, 127, 13, 95)
+BLUE = (0, 100, -128, 127, -67, -17)
 
 ############ SPEED ############
 driver.set_motor(40)
@@ -138,6 +138,8 @@ mid_offset = 60
 offsets = [mid_offset+80, mid_offset, mid_offset-40]
 offset = 1
 prev_cur_cube = None
+
+clockwise = True
 
 cur_millis = 0
 force_go_timer = 0
@@ -173,11 +175,11 @@ while True:
 	if len(turn_orange) and orange_turn_deadtime < cur_millis:
 		orange_turns += 1
 		orange_turn_deadtime = cur_millis + 1000
-		if orange_turns == blue_turns: turns += 1
 	if len(turn_blue) and blue_turn_deadtime < cur_millis:
 		blue_turns += 1
 		blue_turn_deadtime = cur_millis + 1000
-		if orange_turns == blue_turns: turns += 1
+	if orange_turns < blue_turns: clockwise = False
+	if orange_turns == blue_turns: turns = orange_turns
 
 
 	if not force_go_timer > cur_millis: # если только что проехали кубик, помним что за кубик это был
@@ -205,10 +207,9 @@ while True:
 	elif left_area and front_area and front_area < left_area:
 		# повотрот
 		err = offsets[offset] - (left_area + front_area)
-
 	else:
 		err = 0
-		#print("-_-_-_-_-_-ERROR-_-_-_-_-_-")
+		#print("-_-_-_-_-_-ERROR: NO WALLS-_-_-_-_-_-")
 
 	u = main_pid(err)
 	servo.angle(constrain(int(u), -45, 45))
