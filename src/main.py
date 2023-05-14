@@ -91,9 +91,7 @@ driver = Driver(
 )
 servo = Servo(2)
 
-main_pid = PID(0.7, 0, 0)
-button = Pin("P6", Pin.IN)
-
+main_pid = PID(0.4, 0, 0)
 
 clock = time.clock()
 
@@ -125,30 +123,42 @@ AREA_TURNS = (20, int(HIGHT*0.6), WIDTH-20*2, HIGHT-int(HIGHT*0.6))
 AREA_RED_CUBES = (0, 0, int(WIDTH*0.8), int(HIGHT*0.35))
 AREA_GREEN_CUBES = (WIDTH-int(WIDTH*0.8), 0, int(WIDTH*0.8), int(HIGHT*0.35))
 
-RED = (0, 100, 58, 127, 13, 95)
-GREEN = (0, 100, -128, -22, 28, 127)
+RED = (0, 100, 14, 127, 8, 127)
+GREEN = (0, 100, -128, -15, 12, 127)
 BLACK = (0, 46, -128, 127, -128, 19)
 ORANGE = (0, 100, -128, 127, 13, 95)
 BLUE = (0, 100, -128, 127, -67, -17)
 
-mid_offset = 60
-offsets = [130, mid_offset, 20]
-offset = 0
+offsets_out = {
+	"red":   30, # 1 - против часовой, 2 - по часовой
+	"green": 170,
+	None:    70
+}
+
+offsets_in = {
+	"red":   150, # 1 - против часовой, 2 - по часовой
+	"green": 30,
+	None:   70
+}
+
+offset = None
 prev_cur_cube = None
 
 clockwise = True
 
 cur_millis = 0
-force_go_timer = 0
+force_go_timer = red_timer = 0
 in_timer_area_mul = 1
 finish_timer = 1500
 orange_turn_deadtime = blue_turn_deadtime = 0
 blue_turns = orange_turns = turns = 0
 
-while not button.value():
-	img = sensor.snapshot()
-	driver.set_motor(0)
-	servo.angle(0)
+#button = Pin("P6", Pin.IN)
+#while button.value():
+	#img = sensor.snapshot()
+	#driver.set_motor(0)
+	#servo.angle(0)
+#pyb.delay(600)
 
 ############ SPEED ############
 driver.set_motor(40)
@@ -176,46 +186,57 @@ while finish_timer >= cur_millis:
 	front_area = walls_front[0].pixels() if len(walls_front) else 0
 	# текущий куб (зеленый или красный блоб, в зависимости от площади или None)
 	cur_cube = (red_cubes[0] if red_cubes else None) if red_area >= green_area else (green_cubes[0] if green_cubes else None)
+
 	# если потеряли кубик из вида заупскаем таймер
 	if cur_cube is None and prev_cur_cube is not None:
-		force_go_timer = cur_millis + 300
+		force_go_timer = cur_millis + 600
 	prev_cur_cube = cur_cube
 	# считаем повороты
 	if len(turn_orange) and orange_turn_deadtime < cur_millis:
 		orange_turns += 1
-		orange_turn_deadtime = cur_millis + 1000
+		orange_turn_deadtime = cur_millis + 3000
 	if len(turn_blue) and blue_turn_deadtime < cur_millis:
 		blue_turns += 1
-		blue_turn_deadtime = cur_millis + 1000
+		blue_turn_deadtime = cur_millis + 3000
 	if orange_turns == blue_turns: turns = orange_turns
 	# если пересекаем сначала оранжевую линию, то мы едем против часовой стрелика, по дефолту по часовой
 	if orange_turns < blue_turns:
 		if clockwise: main_pid.reset()
 		clockwise = False
 	# определяем позицию робота относитеьно центра в зависимости от кубика
-	if not force_go_timer > cur_millis: # если только что потеряли из виду кубик, то еще секунду не меняем сдвиг относительно центра
+	if not force_go_timer > cur_millis and blue_turns == orange_turns: # если только что потеряли из виду кубик, то еще секунду не меняем сдвиг относительно центра
 		if cur_cube:
 			if red_area > green_area:
-				offset = 2
+				offset = "red"
 				ledr.toggle()
 				ledg.off()
 			else:
-				offset = 0
+				offset = "green"
 				ledg.toggle()
 				ledr.off()
 		else:
-			offset = 1
+			offset = None
 			ledg.off()
 			ledr.off()
+	elif blue_turns != orange_turns:
+		force_go_timer = cur_millis + 100
 
 	# считаем ошибку
-	#offset = 2
+	#offset = "red"
 	cur_area     = left_area if     clockwise else right_area
 	enother_area = left_area if not clockwise else right_area
 
-	err = offsets[offset] - (cur_area + (int(front_area) if blue_turns != orange_turns else 0))# * 1 if clockwise else -1
+	if offset == "red" and enother_area < 30 and not red_timer > cur_millis:
+		red_timer = cur_millis + 1000
+
+	if offset != "red":
+		err = (offsets_out[offset] - (cur_area + (int(front_area*0.7 if cur_area > enother_area else -0.7)))) * 1 if clockwise else -1
+	else:
+		err = (offsets_in[offset] - (enother_area)) * -1 if clockwise else 1
 	if cur_cube and not cur_area:
 		err = 0 # кубик загородил стенку, по которой едем
+	if red_timer > cur_millis:
+		err = 0
 
 
 	u = main_pid(err)
@@ -227,7 +248,7 @@ while finish_timer >= cur_millis:
 		finish_timer = cur_millis + 1500
 
 	deb_roi()
-	deb(img, err=err, ca=cur_area, fa=front_area, timer="IN" if force_go_timer > cur_millis else "OUT", offset=offset, u=u, clws=clockwise)
+	deb(img, err=err, ca=cur_area, fa=front_area, timer1=force_go_timer > cur_millis, timer2=red_timer > cur_millis, offset=offset,clws=clockwise, nca=enother_area)
 	deb_blobs(img, False, current_cube = [cur_cube], lw=walls_left, rw=walls_right, fw=walls_front)
 	#deb(img, blue=blue_turns, orng=orange_turns, al=turns)
 	#deb_blobs(img,True, bl=turn_blue, orn=turn_orange)
