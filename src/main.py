@@ -130,8 +130,8 @@ BLACK = (0, 46, -128, 127, -128, 19)
 ORANGE = (0, 100, -128, 127, 13, 95)
 BLUE = (0, 100, -128, 127, -67, -17)
 
-left_offset = 85
-right_offset = 105
+left_offset = 130
+right_offset = 170
 prev_cur_cube = None
 
 cur_millis = 0
@@ -163,7 +163,7 @@ while cur_millis < finish_timer:
 	# ищем блобы
 	walls_left = img.find_blobs([BLACK], roi=atr(AREA_WALL_LEFT), pixels_threshold=30)
 	walls_right = img.find_blobs([BLACK], roi=atr(AREA_WALL_RIGHT), pixels_threshold=30)
-	walls_front = img.find_blobs([BLACK], roi=atr(AREA_WALL_FRONT), pixels_threshold=65)
+	walls_front = img.find_blobs([BLACK], roi=atr(AREA_WALL_FRONT), pixels_threshold=50)
 	turn_orange = img.find_blobs([ORANGE], roi=atr(AREA_TURNS), pixels_threshold=20)
 	turn_blue = img.find_blobs([BLUE], roi=atr(AREA_TURNS), pixels_threshold=20)
 	# считаем полщади, проверяем что не 0
@@ -173,29 +173,29 @@ while cur_millis < finish_timer:
 
 	if len(turn_orange) and orange_turn_deadtime < cur_millis:
 		orange_turns += 1
-		orange_turn_deadtime = cur_millis + 1000
+		orange_turn_deadtime = cur_millis + 3500
 	if len(turn_blue) and blue_turn_deadtime < cur_millis:
 		blue_turns += 1
-		blue_turn_deadtime = cur_millis + 1000
+		blue_turn_deadtime = cur_millis + 3500
 	if orange_turns < blue_turns: clockwise = False
 	if orange_turns == blue_turns: turns = orange_turns
 
 	if clockwise:
-		err = left_offset - (left_area + int(front_area*0.5))
+		err = left_offset - (left_area + int(front_area*0.7))
 	else:
 		err = right_area + int(front_area*0.5) - right_offset
 
 	u = main_pid(err)
 	servo.angle(constrain(int(u), -45, 45))
 
-	if turns < 2:
-		finish_timer = cur_millis + 3500
+	if turns < 12:
+		finish_timer = cur_millis + 2500
 	else:
 		pass
 
 
 	deb_roi()
-	deb(img, la=left_area, ra=right_area, fa=front_area, err=err, clockwise=clockwise, turns=turns)
+	deb(img, la=left_area, ra=right_area, fa=front_area, err=err, clockwise=clockwise, turns=turns, timer=cur_millis-finish_timer)
 	#deb(img, blue=blue_turns, orng=orange_turns, al=turns)
 	deb_blobs(img,False, bl=turn_blue, orn=turn_orange, lw=walls_left, rw=walls_right, fw=walls_front)
 
