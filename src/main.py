@@ -174,8 +174,8 @@ while finish_timer >= cur_millis:
 	walls_left = img.find_blobs([BLACK], roi=atr(AREA_WALL_LEFT), pixels_threshold=10)
 	walls_right = img.find_blobs([BLACK], roi=atr(AREA_WALL_RIGHT), pixels_threshold=10)
 	walls_front = img.find_blobs([BLACK], roi=atr(AREA_WALL_FRONT), pixels_threshold=40)
-	red_cubes = img.find_blobs([RED], roi=atr(AREA_CUBES), pixels_threshold=20)
-	green_cubes = img.find_blobs([GREEN], roi=atr(AREA_CUBES), pixels_threshold=20)
+	red_cubes = img.find_blobs([RED], roi=atr(AREA_CUBES), pixels_threshold=25)
+	green_cubes = img.find_blobs([GREEN], roi=atr(AREA_CUBES), pixels_threshold=25)
 	turn_orange = img.find_blobs([ORANGE], roi=atr(AREA_TURNS), pixels_threshold=20)
 	turn_blue = img.find_blobs([BLUE], roi=atr(AREA_TURNS), pixels_threshold=20)
 	# считаем полщади, проверяем что не 0
@@ -189,7 +189,7 @@ while finish_timer >= cur_millis:
 
 	# если потеряли кубик из вида заупскаем таймер
 	if cur_cube is None and prev_cur_cube is not None:
-		force_go_timer = cur_millis + 600
+		force_go_timer = cur_millis + 800
 	prev_cur_cube = cur_cube
 	# считаем повороты
 	if len(turn_orange) and orange_turn_deadtime < cur_millis:
@@ -225,14 +225,14 @@ while finish_timer >= cur_millis:
 	#offset = "red"
 	cur_area     = left_area if     clockwise else right_area
 	enother_area = left_area if not clockwise else right_area
-
+	#offset = "red"
 	if offset == "red" and enother_area < 30 and not red_timer > cur_millis:
-		red_timer = cur_millis + 1000
+		red_timer = cur_millis + 750
 
 	if offset != "red":
-		err = (offsets_out[offset] - (cur_area + (int(front_area*0.7 if cur_area > enother_area else -0.7)))) * 1 if clockwise else -1
+		err = (offsets_out[offset] - (cur_area + (int(front_area*0.8 if cur_area > enother_area else -0.8)))) * 1 if clockwise else -1
 	else:
-		err = (offsets_in[offset] - (enother_area)) * -1 if clockwise else 1
+		err = (offsets_in[offset] - (enother_area + (int(front_area* -0.2)))) * -1 if clockwise else 1
 	if cur_cube and not cur_area:
 		err = 0 # кубик загородил стенку, по которой едем
 	if red_timer > cur_millis:

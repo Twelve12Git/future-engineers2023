@@ -1,26 +1,27 @@
-Engineering materials
-====
 
-This repository contains engineering materials of a self-driven vehicle's model participating in the WRO Future Engineers competition in the season 2022.
+Во время реализации системы перемещения или же робота, в приоритет ставилась в первую очередь простота сборки и взаимозаменяемость деталей в случае поломки или необходимости внести коррективы в конструкцию. Во время первичного обсуждения конструкции было принято решение использовать О-образную деталь LEGO как основу корпуса, из этого последовало логичное предложение разбить робот на модули, напечатанных на 3д принтере, соединяющихся с  помощью стандартных штифтов вокруг этой детали. Среди таких модулей можно выделить колесную базу состоящую из рулевого и приводного, и камеру модели OpenMV Cam M7, которая также является микроконтроллером. Для управлением колесной базой мы использовали сервопривод и уже привычный нам по опыту предыдущих соревнований драйвер для моторов постоянного тока drv8833, производства компании pololu. Вся сопутствующая электроника (кнопка "пуск", выключатель питания и т.д.) организована в плату навесным монтажом, и крепится над микроконтроллером по аналогии системы шилдов arduino. В качестве элемента питания был выбран литий-полимерный аккумулятор, как самый оптимальный по соотношению размер/производительность. Модели для печати на 3д принтере были смоделированы в программе fusion 360.
 
-## Content
 
-* `t-photos` contains 2 photos of the team (an official one and one funny photo with all team members)
-* `v-photos` contains 6 photos of the vehicle (from every side, from top and bottom)
-* `video` contains the video.md file with the link to a video where driving demonstration exists
-* `schemes` contains one or several schematic diagrams in form of JPEG, PNG or PDF of the electromechanical components illustrating all the elements (electronic components and motors) used in the vehicle and how they connect to each other.
-* `src` contains code of control software for all components which were programmed to participate in the competition
-* `models` is for the files for models used by 3D printers, laser cutting machines and CNC machines to produce the vehicle elements. If there is nothing to add to this location, the directory can be removed.
-* `other` is for other files which can be used to understand how to prepare the vehicle for the competition. It may include documentation how to connect to a SBC/SBM and upload files there, datasets, hardware specifications, communication protocols descriptions etc. If there is nothing to add to this location, the directory can be removed.
+Программное обеспечение было разработано под платформу  OpenMV Cam M7 компании  OpenMV. В качестве языка программирования использовался python, как наиболее оптимальный для анализа видео, точнее его версию для микропроцессоров - micropython (https://github.com/micropython/micropython). Алгоритм, используемый нами, представляет собой простую машину состояний, определяющей полосу движения в зависимости от знака и направления движения. За непосредственное управление роботом отвечает ПИД-регулятор, опирающийся на границы поля для позиционировании робота в пространстве. За процессом разработки можно проследить по комментариям к версиям нашего репозитория гит-хаба (https://github.com/Twelve12Git/future-engineers2023).
 
-## Introduction
+# описание платы
 
-_This part must be filled by participants with the technical clarifications about the code: which modules the code consists of, how they are related to the electromechanical components of the vehicle, and what is the process to build/compile/upload the code to the vehicle’s controllers._
+Все компоненты размещены на макетной плате 30 на 25 мм, драйвер двигателей съемный. Для отладки используется кнопка, запуск робота обеспечивается небольшим тумблером на плате. От кнопки к земле подведен подтягивающий резистор на 10 Ом. Разъемами на плате выполнены в виде гребёнок типа “папа”. Компоненты спаяны одножильным монтажным проводом
 
-## How to prepare the repo based on the template
+# инструкция по сборке
 
-_Remove this section before the first commit to the repository_
+Сначала вам нужно напечатать все недостающие детали, они расположены в папке “Models“
 
-1. Clone this repo by using the `git clone` functionality.
-2. Remove `.git` directory
-3. [Initialize a new public repository on GitHub](https://github.com/new) by following instructions from "create a new repository on the command line" section (appeared after pressing "Create repository" button).
+Далее нужно докупить электронные компоненты: OpenMV Cam M7, drv8833, производства компании pololu, кнопка "пуск", выключатель питания, аккумулятор gens acc 450 mah 2s, сервопривод mg90-s, провода 28 awg, двигатель с редуктором 1:100; 
+
+и некоторые части корпуса: lego дифференциал, рама 5x7-модульная серая, lego “гвозди”, lego колеса диаметром 30 мм, винты м3 на 7 мм, Ось с головкой 4-модульная темно-серая, саморезы.
+
+необходимо спаять компоненты на макетной плате, разместив гребенки типа “папа” для последующего соединения с платой камеры.
+собрать корпус по приложенной схеме
+
+
+
+	
+
+
+
