@@ -3,8 +3,9 @@ import ustruct
 import time
 import utime
 import pyb
+import sensor
+from pyb import Pin
 from machine import I2C
-from pyb import Pin, Timer
 
 _IO_TIMEOUT = 1000
 _SYSRANGE_START = const(0x00)
@@ -312,6 +313,12 @@ class VL53L0X:
 		)
 		self._started = False
 
+	def set_address(self, address):
+		self._register(0x8A, address)
+		#self.i2c.writeto_mem(self.address, 0x8A, bytes(address))
+		self.address = address
+		pass
+
 	def read(self):
 		if not self._started:
 			self._config(
@@ -339,3 +346,5 @@ class VL53L0X:
 		value = self._register(_RESULT_RANGE_STATUS + 10, struct='>H')
 		self._register(_INTERRUPT_CLEAR, 0x01)
 		return value
+
+

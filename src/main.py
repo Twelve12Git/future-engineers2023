@@ -1,9 +1,21 @@
 import sensor, time, pyb
 from pyb import Pin, Timer, Servo, LED
+from machine import I2C
+from vl53l0x import VL53L0X
 
 def constrain(value, min_, max_):
 	if min_ <= value and value <= max_: return value
 	return min_ if value < min_ else max_
+
+class MyServo:
+	def __init__(self, pin):
+		self.pin = pin
+	def angle(self, angle):
+		angle = constrain(angle, -45, 45)
+		angle += 90 # уводим из -90 - 90 в 0 - 180
+		min_pos = 1000
+		max_pos = 2000
+		self.pin.pulse_width(min_pos + int((max_pos-min_pos)*(180/angle if angle else 1)))
 
 class Driver:
 	"""
@@ -84,12 +96,12 @@ def deb_roi():
 	#img.draw_rectangle(atr(AREA_RED_CUBES), (255, 0, 0)) # зона поиска кубиков
 	#img.draw_rectangle(atr(AREA_GREEN_CUBES), (0, 255, 0)) # зона поиска кубиков
 
-pwm_timer = Timer(2, freq=1000)
+pwm_timer = Timer(4, freq=50)
 driver = Driver(
-	pwm_timer.channel(4, Timer.PWM, pin=Pin("P5")),
-	pwm_timer.channel(3, Timer.PWM, pin=Pin("P4"))
+	pwm_timer.channel(3, Timer.PWM, pin=Pin("P9")),
+	pwm_timer.channel(1, Timer.PWM, pin=Pin("P7"))
 )
-servo = Servo(2)
+servo = MyServo(pwm_timer.channel(2, Timer.PWM, pin=Pin("P8")))
 
 main_pid = PID(0.4, 0, 0)
 
@@ -97,6 +109,22 @@ clock = time.clock()
 
 ledr = LED(1)
 ledg = LED(2)
+
+xshut = Pin('P3', Pin.OUT_PP, Pin.PULL_NONE)
+xshut.value(False)
+pyb.delay(500)
+
+i2c = I2C(sda=Pin('P5'), scl=Pin('P4'), freq=400000)
+
+mysensor1=VL53L0X(i2c)
+mysensor1.set_address(0x30)
+
+xshut.value(True)
+pyb.delay(500)
+mysensor2=VL53L0X(i2c)
+
+mysensor2.start()
+
 
 sensor.reset()
 sensor.set_pixformat(sensor.RGB565)
@@ -129,16 +157,10 @@ BLACK = (0, 46, -128, 127, -128, 19)
 ORANGE = (0, 100, -128, 127, 13, 95)
 BLUE = (0, 100, -128, 127, -67, -17)
 
-offsets_out = {
-	"red":   30, # 1 - против часовой, 2 - по часовой
+offsets = {
+	"red":   30,
 	"green": 170,
-	None:    70
-}
-
-offsets_in = {
-	"red":   150, # 1 - против часовой, 2 - по часовой
-	"green": 30,
-	None:   70
+	None:    250
 }
 
 offset = None
@@ -152,16 +174,17 @@ in_timer_area_mul = 1
 finish_timer = 1500
 orange_turn_deadtime = blue_turn_deadtime = 0
 blue_turns = orange_turns = turns = 0
+left_wall_distance = right_wall_distance = 0
 
-#button = Pin("P6", Pin.IN)
-#while button.value():
-	#img = sensor.snapshot()
-	#driver.set_motor(0)
-	#servo.angle(0)
-#pyb.delay(600)
+button = Pin("P6", Pin.IN)
+while button.value():
+	img = sensor.snapshot()
+	driver.set_motor(0)
+	servo.angle(0)
+pyb.delay(600)
 
 ############ SPEED ############
-driver.set_motor(40)
+driver.set_motor(0)
 ###############################
 
 while finish_timer >= cur_millis:
@@ -170,6 +193,8 @@ while finish_timer >= cur_millis:
 	#img = sensor.snapshot().elens_corr(strength = 1.8, zoom = 1.0)
 
 	cur_millis = pyb.millis()
+	left_wall_distance = mysensor2.read()
+	right_wall_distance = mysensor1.read()
 	# ищем блобы
 	walls_left = img.find_blobs([BLACK], roi=atr(AREA_WALL_LEFT), pixels_threshold=10)
 	walls_right = img.find_blobs([BLACK], roi=atr(AREA_WALL_RIGHT), pixels_threshold=10)
@@ -189,7 +214,7 @@ while finish_timer >= cur_millis:
 
 	# если потеряли кубик из вида заупскаем таймер
 	if cur_cube is None and prev_cur_cube is not None:
-		force_go_timer = cur_millis + 800
+		force_go_timer = cur_millis + 1200
 	prev_cur_cube = cur_cube
 	# считаем повороты
 	if len(turn_orange) and orange_turn_deadtime < cur_millis:
@@ -201,10 +226,9 @@ while finish_timer >= cur_millis:
 	if orange_turns == blue_turns: turns = orange_turns
 	# если пересекаем сначала оранжевую линию, то мы едем против часовой стрелика, по дефолту по часовой
 	if orange_turns < blue_turns:
-		if clockwise: main_pid.reset()
 		clockwise = False
 	# определяем позицию робота относитеьно центра в зависимости от кубика
-	if not force_go_timer > cur_millis and blue_turns == orange_turns: # если только что потеряли из виду кубик, то еще секунду не меняем сдвиг относительно центра
+	if not force_go_timer > cur_millis: # если только что потеряли из виду кубик, то еще секунду не меняем сдвиг относительно центра
 		if cur_cube:
 			if red_area > green_area:
 				offset = "red"
@@ -218,37 +242,23 @@ while finish_timer >= cur_millis:
 			offset = None
 			ledg.off()
 			ledr.off()
-	elif blue_turns != orange_turns:
-		force_go_timer = cur_millis + 100
 
 	# считаем ошибку
 	#offset = "red"
 	cur_area     = left_area if     clockwise else right_area
 	enother_area = left_area if not clockwise else right_area
-	#offset = "red"
-	if offset == "red" and enother_area < 30 and not red_timer > cur_millis:
-		red_timer = cur_millis + 750
 
-	if offset != "red":
-		err = (offsets_out[offset] - (cur_area + (int(front_area*0.8 if cur_area > enother_area else -0.8)))) * 1 if clockwise else -1
-	else:
-		err = (offsets_in[offset] - (enother_area + (int(front_area* -0.2)))) * -1 if clockwise else 1
-	if cur_cube and not cur_area:
-		err = 0 # кубик загородил стенку, по которой едем
-	if red_timer > cur_millis:
-		err = 0
+	err = offsets[offset] - left_wall_distance
 
 
 	u = main_pid(err)
 	servo.angle(constrain(int(u), -45, 45))
 
-	if turns >= 4*1:
-		pass
-	else:
-		finish_timer = cur_millis + 1500
+	if turns < 4*3:
+		finish_timer = cur_millis + 1000
 
 	deb_roi()
-	deb(img, err=err, ca=cur_area, fa=front_area, timer1=force_go_timer > cur_millis, timer2=red_timer > cur_millis, offset=offset,clws=clockwise, nca=enother_area)
+	deb(img, err=err, offset=offset, rwd=right_wall_distance, lwd=left_wall_distance)
 	deb_blobs(img, False, current_cube = [cur_cube], lw=walls_left, rw=walls_right, fw=walls_front)
 	#deb(img, blue=blue_turns, orng=orange_turns, al=turns)
 	#deb_blobs(img,True, bl=turn_blue, orn=turn_orange)
